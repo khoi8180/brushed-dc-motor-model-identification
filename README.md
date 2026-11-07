@@ -8,7 +8,7 @@
 
 ---
 
-The first-order transfer function of a DC motor from input voltage $`V(s)`$ to angular velocity $`\Omega(s)`$ is given by:
+The first-order transfer function of a small-to-medium brushed DC motor from input voltage $`V(s)`$ to angular velocity $`\Omega(s)`$ (under the singular perturbation condition where the electrical time constant is negligible compared to mechanical inertia, $`\tau_m \gg \tau_e = L_a/R_a`$) is given by:
 
 ```math
 \frac{\Omega(s)}{V(s)} = \frac{K_{\text{DC}}}{\tau s + 1}
@@ -122,4 +122,38 @@ a = \frac{\theta_2 - \theta_1}{t_2 - t_1}, \qquad b = \theta_1 - a t_1
 
 ```math
 K_{\text{DC}} = \frac{a}{V_0}, \qquad \tau = -\frac{b}{a}
-```  
+```
+
+---
+
+## Practical Considerations & Implementation Notes
+
+### 1. Scope and Domain of Applicability
+This formulation is tailored for **small-to-medium permanent-magnet DC motors** (e.g., robotics, servomechanisms, small automation drives) where the mechanical time constant dominates the electrical inductance dynamics by orders of magnitude ($`\tau_m \gg \tau_e`$). For large industrial motors where $`L_a`$ is substantial ($`\tau_e`$ on the order of tens of milliseconds), singular perturbation does not hold, and full coupled second-order modeling with direct armature current sensing is required.
+
+### 2. Zero-Reference Alignment ($`\theta(0) = 0`$)
+The analytical derivation assumes initial conditions at rest with zero starting displacement. In practice, calculate relative displacement from the moment the step input is triggered:
+
+```math
+\Delta\theta(t) = \theta(t) - \theta(0)
+```
+
+Any untared initial position offset directly shifts the intercept $`b`$, biasing the time constant estimate $`\tau = -b/a`$, while leaving $`K_{\text{DC}}`$ unaffected.
+
+### 3. Batch Least-Squares Regression (Alternative to Two Points)
+While two points analytically define a line, real-world low-resolution encoders or slight gearhead tooth irregularities may introduce small local variations. For maximum statistical robustness, one can record a window of samples along the linear tail ($`t \in [t_1, t_2]`$) and perform a first-degree least-squares linear regression:
+
+```math
+r(t) = a \cdot t + b
+```
+
+In MATLAB:
+```matlab
+idx = (t >= t1) & (t <= t2);
+p = polyfit(t(idx), theta(idx), 1);
+K_DC = p(1) / V0;
+tau  = -p(2) / p(1);
+```
+
+### 4. Selection of Time Window ($`t_1, t_2`$)
+The lower bound $`t_1`$ must satisfy $`t_1 \ge 5\tau`$ so that $`e^{-t/\tau} \approx 0`$. For typical small gearmotors ($`\tau \approx 50\text{--}150\text{ ms}`$), selecting $`t_1 = 1.0\text{ s}`$ and $`t_2 = 1.5\text{ s}`$ guarantees that the motor is deep in steady state ($`t_1 \ge 7\tau\text{--}20\tau`$). Avoid excessively long test runs (e.g., $> 10\text{ s}$) under battery power to prevent voltage sag and thermal heating of the armature coil from introducing non-linear drift into the steady-state slope.
